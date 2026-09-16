@@ -15,6 +15,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// NOTE: `provider` must be a literal ("sqlite" | "postgresql"), Prisma does
+// not support selecting it via env(). To move to PostgreSQL: change this to
+// "postgresql", point DATABASE_URL at a Postgres instance, then re-run
+// `npm run db:migrate`. See docs/DEPLOYMENT.md.
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
@@ -142,14 +146,14 @@ model SeatCategory {
 }
 
 model Seat {
-  id            String  @id @default(cuid())
-  screenId      String
-  row           String // "A", "B", ...
-  column        Int
-  label         String // "A12"
-  categoryId    String
-  isAccessible  Boolean @default(false)
-  isActive      Boolean @default(true)
+  id           String  @id @default(cuid())
+  screenId     String
+  row          String // "A", "B", ...
+  column       Int
+  label        String // "A12"
+  categoryId   String
+  isAccessible Boolean @default(false)
+  isActive     Boolean @default(true)
 
   screen        Screen         @relation(fields: [screenId], references: [id], onDelete: Cascade)
   category      SeatCategory   @relation(fields: [categoryId], references: [id])
@@ -193,10 +197,10 @@ model ShowtimeSeat {
   holdId        String?
   holdExpiresAt DateTime?
 
-  showtime     Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
-  seat         Seat          @relation(fields: [seatId], references: [id], onDelete: Cascade)
-  hold         SeatHold?     @relation(fields: [holdId], references: [id], onDelete: SetNull)
-  bookingItem  BookingItem?
+  showtime    Showtime     @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
+  seat        Seat         @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  hold        SeatHold?    @relation(fields: [holdId], references: [id], onDelete: SetNull)
+  bookingItem BookingItem?
 
   @@unique([showtimeId, seatId])
   @@index([holdId])
@@ -204,12 +208,12 @@ model ShowtimeSeat {
 }
 
 model SeatHold {
-  id        String   @id @default(cuid())
+  id         String   @id @default(cuid())
   showtimeId String
-  userId    String
-  status    String   @default("ACTIVE") // ACTIVE | CONSUMED | EXPIRED | RELEASED
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  userId     String
+  status     String   @default("ACTIVE") // ACTIVE | CONSUMED | EXPIRED | RELEASED
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
 
   showtime Showtime       @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
   user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -225,27 +229,27 @@ model SeatHold {
 // ---------------------------------------------------------------------------
 
 model Booking {
-  id             String   @id @default(cuid())
-  bookingRef     String   @unique
-  userId         String
-  showtimeId     String
-  holdId         String?  @unique
-  status         String   @default("DRAFT") // DRAFT | PAYMENT_PENDING | CONFIRMED | CANCELLED | EXPIRED | PAYMENT_FAILED
-  subtotalCents  Int
-  feesCents      Int
-  taxCents       Int
-  discountCents  Int      @default(0)
-  totalCents     Int
-  currency       String   @default("USD")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(cuid())
+  bookingRef    String   @unique
+  userId        String
+  showtimeId    String
+  holdId        String?  @unique
+  status        String   @default("DRAFT") // DRAFT | PAYMENT_PENDING | CONFIRMED | CANCELLED | EXPIRED | PAYMENT_FAILED
+  subtotalCents Int
+  feesCents     Int
+  taxCents      Int
+  discountCents Int      @default(0)
+  totalCents    Int
+  currency      String   @default("USD")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  user      User          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  showtime  Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Restrict)
-  hold      SeatHold?     @relation(fields: [holdId], references: [id], onDelete: SetNull)
-  items     BookingItem[]
-  payments  Payment[]
-  ticket    Ticket?
+  user     User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  showtime Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Restrict)
+  hold     SeatHold?     @relation(fields: [holdId], references: [id], onDelete: SetNull)
+  items    BookingItem[]
+  payments Payment[]
+  ticket   Ticket?
 
   @@index([userId, status])
   @@index([status])

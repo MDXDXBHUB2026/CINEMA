@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3f0d12" />
+      <stop offset="1" stop-color="#000000" />
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#g)" />
+  <g opacity="0.25">
+    <circle cx="0" cy="0" r="60" fill="#f97362" /><circle cx="173" cy="271" r="100" fill="#f97362" /><circle cx="346" cy="542" r="140" fill="#f97362" /><circle cx="519" cy="93" r="60" fill="#f97362" /><circle cx="692" cy="364" r="100" fill="#f97362" /><circle cx="865" cy="635" r="140" fill="#f97362" /><circle cx="1038" cy="186" r="60" fill="#f97362" /><circle cx="1211" cy="457" r="100" fill="#f97362" />
+  </g>
+  <text x="64" y="640" font-family="Georgia, serif" font-size="56" fill="#f8fafc">Sundown Carnival</text>
+</svg>

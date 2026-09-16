@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#431407" />
+      <stop offset="1" stop-color="#000000" />
+    </linearGradient>
+  </defs>
+  <rect width="400" height="600" fill="url(#g)" />
+  <rect x="24" y="24" width="352" height="552" fill="none" stroke="#fb923c" stroke-width="2" opacity="0.5" />
+  <circle cx="200" cy="180" r="60" fill="#fb923c" opacity="0.15" />
+  <text x="200" y="300" text-anchor="middle" font-family="Georgia, serif" font-size="34" fill="#f8fafc">IRON TIDE</text>
+  <text x="200" y="540" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" letter-spacing="4" fill="#fb923c">CINEBOOK</text>
+  <text x="376" y="48" text-anchor="end" font-family="Arial, sans-serif" font-size="14" fill="#f8fafc" opacity="0.8">PG-13</text>
+</svg>
