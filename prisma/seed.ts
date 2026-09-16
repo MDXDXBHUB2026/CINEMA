@@ -87,7 +87,7 @@ async function main() {
 
   console.log("Seeding users...");
   const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
-  const [admin, manager, staff, alice, bob, carla] = await Promise.all([
+  const [, manager, , alice] = await Promise.all([
     prisma.user.create({ data: { name: "Ava Admin", email: "admin@cinebook.dev", passwordHash, role: "ADMIN" } }),
     prisma.user.create({ data: { name: "Max Manager", email: "manager@cinebook.dev", passwordHash, role: "CINEMA_MANAGER" } }),
     prisma.user.create({ data: { name: "Sam Staff", email: "staff@cinebook.dev", passwordHash, role: "STAFF" } }),

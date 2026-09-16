@@ -6,5 +6,4 @@ process.env.SESSION_TTL_SECONDS = "604800";
 process.env.SEAT_HOLD_TTL_SECONDS = "300";
 process.env.BOOKING_FEE_CENTS = "150";
 process.env.TAX_RATE = "0.08";
-process.env.NODE_ENV = "test";
 process.env.APP_BASE_URL = "http://localhost:3000";

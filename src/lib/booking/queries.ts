@@ -10,6 +10,7 @@ export async function getBookingDetail(bookingId: string) {
       payments: { orderBy: { createdAt: "desc" } },
       showtime: { include: { movie: true, screen: { include: { cinema: true } } } },
       user: { select: { id: true, name: true, email: true } },
+      hold: true,
     },
   });
   if (!booking) throw new AppError("NOT_FOUND", "Booking not found.");

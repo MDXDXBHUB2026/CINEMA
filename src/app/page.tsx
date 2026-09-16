@@ -1,69 +1,110 @@
+import Link from "next/link";
 import Image from "next/image";
+import { ArrowRight, MapPin } from "lucide-react";
+import { getNowShowingMovies, getComingSoonMovies, getCinemas } from "@/lib/catalog";
+import { MovieCard } from "@/components/cinema/movie-card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
 
-export default function Home() {
+export default async function HomePage() {
+  const [nowShowing, comingSoon, cinemas] = await Promise.all([getNowShowingMovies(), getComingSoonMovies(), getCinemas()]);
+  const featured = nowShowing[0];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div>
+      {featured && (
+        <section className="relative overflow-hidden border-b border-border">
+          <div className="absolute inset-0">
+            <Image src={featured.backdropUrl} alt="" fill priority className="object-cover opacity-40" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-background/20" />
+          </div>
+          <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+            <p className="text-sm font-medium uppercase tracking-widest text-primary">Now Showing</p>
+            <h1 className="mt-2 max-w-xl text-4xl font-bold text-foreground sm:text-5xl">{featured.title}</h1>
+            <p className="mt-4 max-w-lg text-muted">{featured.synopsis}</p>
+            <div className="mt-6 flex gap-3">
+              <Link href={`/movies/${featured.slug}`} className="inline-flex">
+                <Button size="lg">
+                  Book tickets
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </Link>
+              <Link href="/movies" className="inline-flex">
+                <Button size="lg" variant="secondary">
+                  Browse all movies
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-foreground sm:text-2xl">Now Showing</h2>
+          <Link href="/movies" className="text-sm font-medium text-primary hover:underline">
+            View all
+          </Link>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {nowShowing.map((movie) => (
+            <MovieCard
+              key={movie.id}
+              movie={{
+                slug: movie.slug,
+                title: movie.title,
+                posterUrl: movie.posterUrl,
+                classification: movie.classification,
+                durationMinutes: movie.durationMinutes,
+                genres: movie.genres.map((g) => g.genre.name),
+                status: movie.status,
+              }}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          ))}
         </div>
-      </main>
+      </section>
+
+      {comingSoon.length > 0 && (
+        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+          <h2 className="mb-5 text-xl font-bold text-foreground sm:text-2xl">Coming Soon</h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {comingSoon.map((movie) => (
+              <MovieCard
+                key={movie.id}
+                movie={{
+                  slug: movie.slug,
+                  title: movie.title,
+                  posterUrl: movie.posterUrl,
+                  classification: movie.classification,
+                  durationMinutes: movie.durationMinutes,
+                  genres: movie.genres.map((g) => g.genre.name),
+                  status: movie.status,
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <h2 className="mb-5 text-xl font-bold text-foreground sm:text-2xl">Our Cinemas</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {cinemas.map((cinema) => (
+            <Link key={cinema.id} href={`/cinemas/${cinema.slug}`}>
+              <Card className="h-full transition-colors hover:border-primary/50">
+                <CardContent className="pt-5">
+                  <CardTitle>{cinema.name}</CardTitle>
+                  <CardDescription className="mt-1 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                    {cinema.address}, {cinema.city}
+                  </CardDescription>
+                  <p className="mt-3 text-xs text-muted">{cinema.screens.length} screens</p>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

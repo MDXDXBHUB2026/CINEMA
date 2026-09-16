@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { generateBookingRef, generateIdempotencyKey } from "@/lib/ids";
+import { generateBookingRef } from "@/lib/ids";
 import { priceSeat, computePricingBreakdown } from "@/lib/pricing";
 import { assertBookingTransition } from "@/lib/booking/state-machine";
 import { bookingEngineConfig } from "@/lib/config";
@@ -191,7 +191,7 @@ export async function releaseHold({ userId, holdId }: { userId: string; holdId: 
 
 async function createBookingRow(
   tx: Prisma.TransactionClient,
-  params: { userId: string; showtimeId: string; holdId: string; items: Prisma.BookingItemCreateWithoutBookingInput[]; breakdown: ReturnType<typeof computePricingBreakdown> },
+  params: { userId: string; showtimeId: string; holdId: string; items: Prisma.BookingItemUncheckedCreateWithoutBookingInput[]; breakdown: ReturnType<typeof computePricingBreakdown> },
 ) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -243,7 +243,7 @@ export async function createBookingFromHold({ userId, holdId }: { userId: string
       },
     });
     if (!hold || hold.userId !== userId) throw new AppError("NOT_FOUND", "Seat hold not found.");
-    if (hold.booking) return hold.booking;
+    if (hold.booking) return tx.booking.findUniqueOrThrow({ where: { id: hold.booking.id }, include: { items: true } });
 
     if (hold.status !== "ACTIVE" || hold.expiresAt <= now) {
       await sweepExpiredHoldsForShowtime(tx, hold.showtimeId, now);
@@ -308,7 +308,7 @@ export async function payForBooking(params: PayForBookingParams): Promise<PayFor
     // assumption — the booking may already be CONFIRMED by that duplicate.
     const existing = await tx.payment.findUnique({ where: { idempotencyKey: params.idempotencyKey } });
     if (existing && existing.status !== "PENDING") {
-      return { alreadyFinalizedPaymentId: existing.id } as const;
+      return { kind: "already-finalized" as const, paymentId: existing.id };
     }
 
     if (!existing) {
@@ -339,11 +339,11 @@ export async function payForBooking(params: PayForBookingParams): Promise<PayFor
       }));
 
     logger.info("PAYMENT_ATTEMPTED", { bookingId: booking.id, paymentId: payment.id, amountCents: payment.amountCents });
-    return { booking, payment } as const;
+    return { kind: "proceed" as const, booking, payment };
   }, TX_OPTIONS);
 
-  if ("alreadyFinalizedPaymentId" in outcome) {
-    return resultFromFinalizedPayment(outcome.alreadyFinalizedPaymentId);
+  if (outcome.kind === "already-finalized") {
+    return resultFromFinalizedPayment(outcome.paymentId);
   }
   const { booking, payment } = outcome;
 

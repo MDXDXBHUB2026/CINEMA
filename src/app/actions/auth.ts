@@ -48,7 +48,10 @@ export async function registerAction(_prev: AuthFormState, formData: FormData): 
 
   logger.info("AUTH_REGISTER", { userId: user.id });
   await setSessionCookie({ sub: user.id, email: user.email, role: "CUSTOMER", name: user.name });
-  redirect("/account");
+
+  const next = formData.get("next");
+  const isSafeNext = typeof next === "string" && next.startsWith("/") && !next.startsWith("//");
+  redirect(isSafeNext ? next : "/account");
 }
 
 export async function loginAction(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -82,7 +85,11 @@ export async function loginAction(_prev: AuthFormState, formData: FormData): Pro
 
   logger.info("AUTH_LOGIN_SUCCESS", { userId: user.id, ip });
   await setSessionCookie({ sub: user.id, email: user.email, role: user.role, name: user.name });
-  redirect(user.role === "ADMIN" || user.role === "STAFF" || user.role === "CINEMA_MANAGER" ? "/admin" : "/account");
+
+  const next = formData.get("next");
+  const isSafeNext = typeof next === "string" && next.startsWith("/") && !next.startsWith("//");
+  const defaultDestination = user.role === "ADMIN" || user.role === "STAFF" || user.role === "CINEMA_MANAGER" ? "/admin" : "/account";
+  redirect(isSafeNext ? next : defaultDestination);
 }
 
 export async function logoutAction(): Promise<void> {
