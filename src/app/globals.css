@@ -1,18 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0b0b0f;
-  --surface: #141319;
-  --surface-raised: #1b1a22;
-  --border: #2a2933;
-  --foreground: #f4f3f7;
-  --muted: #9997a8;
-  --primary: #f2b705;
-  --primary-foreground: #17140a;
+  --background: #060b1a;
+  --surface: #0d1730;
+  --surface-raised: #142344;
+  --border: #22335c;
+  --foreground: #f2f5ff;
+  --muted: #8b96c4;
+  --primary: #e8b954;
+  --primary-foreground: #1a1204;
   --success: #34d399;
   --danger: #f87171;
   --warning: #fbbf24;
-  --accessible: #60a5fa;
+  --accessible: #5eb8e0;
+  --aurora-gold: #e8b954;
+  --aurora-teal: #2dd4c8;
+  --aurora-violet: #6d5ce8;
   --radius: 0.75rem;
 }
 
@@ -60,6 +63,92 @@ body {
 }
 .skip-link:focus {
   left: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Aurora background — a slow-drifting navy/gold/teal glow used behind the */
+/* hero and other feature sections. Pure CSS (no images/JS), respects      */
+/* prefers-reduced-motion.                                                 */
+/* ---------------------------------------------------------------------- */
+.aurora-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora-bg::before,
+.aurora-bg::after {
+  content: "";
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  max-width: 900px;
+  max-height: 900px;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.35;
+  animation: aurora-drift 22s ease-in-out infinite alternate;
+}
+.aurora-bg::before {
+  top: -20%;
+  left: -10%;
+  background: radial-gradient(circle at center, var(--aurora-gold), transparent 70%);
+}
+.aurora-bg::after {
+  bottom: -25%;
+  right: -10%;
+  background: radial-gradient(circle at center, var(--aurora-teal), transparent 70%);
+  animation-duration: 26s;
+  animation-delay: -6s;
+}
+.aurora-bg .aurora-violet {
+  position: absolute;
+  top: 10%;
+  right: 15%;
+  width: 45vw;
+  height: 45vw;
+  max-width: 700px;
+  max-height: 700px;
+  border-radius: 9999px;
+  filter: blur(100px);
+  opacity: 0.22;
+  background: radial-gradient(circle at center, var(--aurora-violet), transparent 70%);
+  animation: aurora-drift 30s ease-in-out infinite alternate;
+  animation-delay: -12s;
+}
+
+@keyframes aurora-drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(6%, 8%) scale(1.15);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.6s ease-out both;
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-bg::before,
+  .aurora-bg::after,
+  .aurora-bg .aurora-violet {
+    animation: none;
+  }
+  .animate-fade-up {
+    animation: none;
+  }
 }
 
 @media print {

@@ -14,15 +14,22 @@ export default async function HomePage() {
     <div>
       {featured && (
         <section className="relative overflow-hidden border-b border-border">
+          <div className="aurora-bg">
+            <div className="aurora-violet" />
+          </div>
           <div className="absolute inset-0">
-            <Image src={featured.backdropUrl} alt="" fill priority className="object-cover opacity-40" />
-            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-background/20" />
+            <Image src={featured.backdropUrl} alt="" fill priority className="object-cover opacity-30" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/75 to-background/30" />
           </div>
           <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-            <p className="text-sm font-medium uppercase tracking-widest text-primary">Now Showing</p>
-            <h1 className="mt-2 max-w-xl text-4xl font-bold text-foreground sm:text-5xl">{featured.title}</h1>
-            <p className="mt-4 max-w-lg text-muted">{featured.synopsis}</p>
-            <div className="mt-6 flex gap-3">
+            <p className="animate-fade-up text-sm font-medium uppercase tracking-widest text-primary">Now Showing</p>
+            <h1 className="animate-fade-up mt-2 max-w-xl text-4xl font-bold text-foreground sm:text-5xl" style={{ animationDelay: "80ms" }}>
+              {featured.title}
+            </h1>
+            <p className="animate-fade-up mt-4 max-w-lg text-muted" style={{ animationDelay: "160ms" }}>
+              {featured.synopsis}
+            </p>
+            <div className="animate-fade-up mt-6 flex gap-3" style={{ animationDelay: "240ms" }}>
               <Link href={`/movies/${featured.slug}`} className="inline-flex">
                 <Button size="lg">
                   Book tickets

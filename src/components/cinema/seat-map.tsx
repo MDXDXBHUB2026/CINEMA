@@ -66,7 +66,11 @@ export function SeatMap({ showtimeId }: { showtimeId: string }) {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [seats]);
 
-  const selectedSeats = useMemo(() => (seats ?? []).filter((s) => selected.has(s.showtimeSeatId)), [seats, selected]);
+  // Selection is keyed by Seat.id (the catalog seat, e.g. "row A col 5"),
+  // NOT ShowtimeSeat.id (the per-showtime inventory row) — this matches
+  // what createSeatHold expects (see src/lib/booking/engine.ts), which
+  // looks up inventory rows by seatId + showtimeId together.
+  const selectedSeats = useMemo(() => (seats ?? []).filter((s) => selected.has(s.seatId)), [seats, selected]);
   const subtotalCents = selectedSeats.reduce((sum, s) => sum + s.priceCents, 0);
 
   function toggleSeat(seat: SeatMapEntry) {
@@ -74,11 +78,11 @@ export function SeatMap({ showtimeId }: { showtimeId: string }) {
     setError(null);
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(seat.showtimeSeatId)) {
-        next.delete(seat.showtimeSeatId);
+      if (next.has(seat.seatId)) {
+        next.delete(seat.seatId);
       } else {
         if (next.size >= 10) return prev;
-        next.add(seat.showtimeSeatId);
+        next.add(seat.seatId);
       }
       return next;
     });
@@ -159,7 +163,7 @@ export function SeatMap({ showtimeId }: { showtimeId: string }) {
                 {rowSeats
                   .sort((a, b) => a.column - b.column)
                   .map((seat) => {
-                    const isSelected = selected.has(seat.showtimeSeatId);
+                    const isSelected = selected.has(seat.seatId);
                     const disabled = seat.status !== "AVAILABLE";
                     return (
                       <button

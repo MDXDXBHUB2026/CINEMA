@@ -1,4 +1,12 @@
-import { pricingConfig } from "@/lib/config";
+/**
+ * Pure pricing math with NO config/env dependency, deliberately — this file
+ * is imported from client components (e.g. the seat map) for `formatCents`,
+ * so it must never pull in `@/lib/config` (server-only env parsing), or
+ * Next bundles that env read into the browser and it throws there (there is
+ * no DATABASE_URL/AUTH_SECRET in the browser). The fee/tax rate are passed
+ * in by the caller — see `computePricingBreakdown`'s only caller in
+ * src/lib/booking/engine.ts, which sources them from `pricingConfig`.
+ */
 
 export interface PricedSeat {
   showtimeSeatId: string;
@@ -14,6 +22,11 @@ export interface PricingBreakdown {
   taxCents: number;
   discountCents: number;
   totalCents: number;
+}
+
+export interface FeeAndTaxConfig {
+  bookingFeeCents: number;
+  taxRate: number;
 }
 
 /**
@@ -33,17 +46,18 @@ export function priceSeat(basePriceCents: number, categoryMultiplier: number): n
  */
 export function computePricingBreakdown(
   seats: PricedSeat[],
+  feeAndTax: FeeAndTaxConfig,
   discountCents = 0,
 ): PricingBreakdown {
   const subtotalCents = seats.reduce((sum, s) => sum + s.unitPriceCents, 0);
-  const feesCents = seats.length > 0 ? pricingConfig.bookingFeeCents : 0;
+  const feesCents = seats.length > 0 ? feeAndTax.bookingFeeCents : 0;
   const taxableCents = Math.max(0, subtotalCents + feesCents - discountCents);
-  const taxCents = Math.round(taxableCents * pricingConfig.taxRate);
+  const taxCents = Math.round(taxableCents * feeAndTax.taxRate);
   const totalCents = Math.max(0, subtotalCents + feesCents + taxCents - discountCents);
 
   return { seats, subtotalCents, feesCents, taxCents, discountCents, totalCents };
 }
 
-export function formatCents(cents: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+export function formatCents(cents: number, currency = "AED"): string {
+  return new Intl.NumberFormat("en-AE", { style: "currency", currency, currencyDisplay: "code" }).format(cents / 100);
 }

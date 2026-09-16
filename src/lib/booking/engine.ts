@@ -5,7 +5,7 @@ import { logger } from "@/lib/logger";
 import { generateBookingRef } from "@/lib/ids";
 import { priceSeat, computePricingBreakdown } from "@/lib/pricing";
 import { assertBookingTransition } from "@/lib/booking/state-machine";
-import { bookingEngineConfig } from "@/lib/config";
+import { bookingEngineConfig, pricingConfig } from "@/lib/config";
 import { paymentProvider } from "@/lib/payments/simulated-provider";
 import type { SimulatedOutcome } from "@/lib/payments/provider";
 import type { BookingStatus } from "@/lib/enums";
@@ -256,7 +256,7 @@ export async function createBookingFromHold({ userId, holdId }: { userId: string
       categoryName: showtimeSeat.seat.category.name,
       unitPriceCents: priceSeat(hold.showtime.basePriceCents, showtimeSeat.seat.category.priceMultiplier),
     }));
-    const breakdown = computePricingBreakdown(items);
+    const breakdown = computePricingBreakdown(items, pricingConfig);
 
     const booking = await createBookingRow(tx, { userId, showtimeId: hold.showtimeId, holdId: hold.id, items, breakdown });
     logger.info("BOOKING_CREATED", { bookingId: booking.id, bookingRef: booking.bookingRef, userId, totalCents: booking.totalCents });

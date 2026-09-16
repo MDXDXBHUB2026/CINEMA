@@ -32,12 +32,13 @@ export default async function MovieDetailPage({ params }: PageProps<"/movies/[sl
   return (
     <div>
       <div className="relative border-b border-border">
+        <div className="aurora-bg" />
         <div className="absolute inset-0">
           <Image src={movie.backdropUrl} alt="" fill className="object-cover opacity-30" />
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/40" />
         </div>
         <div className="relative mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:px-6 sm:py-14">
-          <div className="relative mx-auto aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-xl border border-border shadow-xl sm:mx-0 sm:w-56">
+          <div className="relative mx-auto aspect-[2/3] w-40 shrink-0 overflow-hidden rounded-xl border border-border shadow-xl sm:mx-0 sm:w-56 animate-fade-up">
             <Image src={movie.posterUrl} alt={`${movie.title} poster`} fill className="object-cover" />
           </div>
           <div>

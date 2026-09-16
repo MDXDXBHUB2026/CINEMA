@@ -240,7 +240,7 @@ model Booking {
   taxCents      Int
   discountCents Int      @default(0)
   totalCents    Int
-  currency      String   @default("USD")
+  currency      String   @default("AED")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

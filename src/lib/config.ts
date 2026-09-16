@@ -2,7 +2,14 @@
  * Centralized, validated environment configuration. Import this instead of
  * reading `process.env` directly so every consumer gets the same parsed,
  * defaulted values and startup fails fast on misconfiguration.
+ *
+ * `import "server-only"` makes an accidental client-component import of this
+ * module (or anything that transitively imports it) a build-time error
+ * instead of a runtime crash in the browser, where none of these env vars
+ * exist. This exact mistake happened once already — see the git history of
+ * src/lib/pricing.ts, which used to import this file.
  */
+import "server-only";
 import { z } from "zod";
 
 const envSchema = z.object({

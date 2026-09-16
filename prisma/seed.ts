@@ -98,9 +98,9 @@ async function main() {
 
   console.log("Seeding cinemas & screens...");
   const cinemaSpecs = [
-    { slug: "downtown", name: "CineBook Downtown", city: "Metroville", address: "100 Main Street" },
-    { slug: "riverside", name: "CineBook Riverside", city: "Metroville", address: "42 Riverside Ave" },
-    { slug: "grand-mall", name: "CineBook Grand Mall", city: "Lakeport", address: "8 Mall Concourse" },
+    { slug: "dubai-mall", name: "CineBook Dubai Mall", city: "Dubai", address: "Financial Centre Road, Downtown Dubai" },
+    { slug: "marina", name: "CineBook Marina", city: "Dubai", address: "Dubai Marina Walk, Marina" },
+    { slug: "abu-dhabi", name: "CineBook Yas Island", city: "Abu Dhabi", address: "Yas Island, Abu Dhabi" },
   ];
 
   const cinemas = [];
@@ -166,7 +166,7 @@ async function main() {
       title: "The Last Orchard",
       synopsis: "Three estranged siblings return home to save their family's orchard from foreclosure, and each other.",
       durationMinutes: 112,
-      language: "English",
+      language: "Arabic",
       classification: "PG",
       genres: ["Drama"],
       releaseDays: -30,
@@ -188,7 +188,7 @@ async function main() {
       title: "Paper Lanterns",
       synopsis: "A chance encounter at a night market blossoms into a love story spanning three festivals.",
       durationMinutes: 118,
-      language: "English",
+      language: "Hindi",
       classification: "PG-13",
       genres: ["Romance", "Drama"],
       releaseDays: -3,
@@ -210,7 +210,7 @@ async function main() {
       title: "Sundown Carnival",
       synopsis: "An animated adventure following a young mechanic who discovers her town's traveling carnival runs on captured starlight.",
       durationMinutes: 96,
-      language: "English",
+      language: "Arabic",
       classification: "G",
       genres: ["Animation", "Comedy"],
       releaseDays: -21,
@@ -232,7 +232,7 @@ async function main() {
       title: "The Cartographer's Daughter",
       synopsis: "A young mapmaker inherits her late father's unfinished atlas of places that technically shouldn't exist.",
       durationMinutes: 109,
-      language: "English",
+      language: "French",
       classification: "PG",
       genres: ["Drama", "Sci-Fi"],
       releaseDays: 45,
@@ -243,7 +243,7 @@ async function main() {
   const now = new Date();
   const movies = [];
   for (const spec of movieSpecs) {
-    const art = writeMovieArt(spec.slug, spec.title, spec.classification);
+    const art = writeMovieArt(spec.slug, spec.title, spec.classification, spec.language);
     const movie = await prisma.movie.create({
       data: {
         slug: spec.slug,

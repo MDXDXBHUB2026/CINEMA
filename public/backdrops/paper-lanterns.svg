@@ -1,13 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0c2340" />
-      <stop offset="1" stop-color="#000000" />
+    
+  <filter id="grain">
+    <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" result="noise" />
+    <feColorMatrix in="noise" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.035 0" />
+  </filter>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#060b1a" />
+      <stop offset="1" stop-color="#02040c" />
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0" />
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55" />
     </linearGradient>
   </defs>
-  <rect width="1280" height="720" fill="url(#g)" />
-  <g opacity="0.25">
-    <circle cx="0" cy="0" r="60" fill="#facc15" /><circle cx="173" cy="271" r="100" fill="#facc15" /><circle cx="346" cy="542" r="140" fill="#facc15" /><circle cx="519" cy="93" r="60" fill="#facc15" /><circle cx="692" cy="364" r="100" fill="#facc15" /><circle cx="865" cy="635" r="140" fill="#facc15" /><circle cx="1038" cy="186" r="60" fill="#facc15" /><circle cx="1211" cy="457" r="100" fill="#facc15" />
-  </g>
-  <text x="64" y="640" font-family="Georgia, serif" font-size="56" fill="#f8fafc">Paper Lanterns</text>
+  <rect width="1280" height="720" fill="url(#bg)" />
+  <g><circle cx="343" cy="423" r="140" fill="#e8b954" opacity="0.16" /><circle cx="654" cy="620" r="220" fill="#f5d78e" opacity="0.16" /><circle cx="965" cy="97" r="300" fill="#e8b954" opacity="0.16" /><circle cx="1276" cy="294" r="140" fill="#f5d78e" opacity="0.16" /><circle cx="307" cy="491" r="220" fill="#e8b954" opacity="0.16" /></g>
+  <rect width="1280" height="720" fill="#ffffff" filter="url(#grain)" opacity="0.4" />
+  <rect width="1280" height="720" fill="url(#fade)" />
+  <text x="64" y="648" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="700" fill="#f2f5ff">Paper Lanterns</text>
 </svg>

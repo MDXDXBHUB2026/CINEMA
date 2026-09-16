@@ -1,0 +1,25 @@
+# Optional: a local PostgreSQL instance for developers who want to run
+# against the intended production database instead of the SQLite fallback.
+# Not required — `npm run dev` works out of the box against SQLite.
+#
+# Usage:
+#   docker compose up -d
+#   # then in .env: DATABASE_URL="postgresql://cinebook:cinebook@localhost:5432/cinebook"
+#   # and in prisma/schema.prisma: provider = "postgresql"
+#   npm run db:migrate
+#   npm run db:seed
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cinebook
+      POSTGRES_PASSWORD: cinebook
+      POSTGRES_DB: cinebook
+    ports:
+      - "5432:5432"
+    volumes:
+      - cinebook_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  cinebook_postgres_data:
