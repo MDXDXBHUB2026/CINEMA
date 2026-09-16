@@ -284,19 +284,39 @@ export interface PayForBookingResult {
  * "Payment idempotency".
  */
 export async function payForBooking(params: PayForBookingParams): Promise<PayForBookingResult> {
-  const existingPayment = await prisma.payment.findUnique({ where: { idempotencyKey: params.idempotencyKey } });
-  if (existingPayment && existingPayment.status !== "PENDING") {
-    return resultFromFinalizedPayment(existingPayment.id);
+  // Fast path: a fully-finalized payment for this key already exists (a
+  // sequential retry after full completion). Avoids an unnecessary
+  // transaction, but is NOT the correctness guarantee for concurrent
+  // duplicate calls — that guarantee lives inside the transaction below,
+  // because this read can race with another in-flight call for the same
+  // key. See docs/BOOKING_ENGINE.md "Payment idempotency".
+  const precheck = await prisma.payment.findUnique({ where: { idempotencyKey: params.idempotencyKey } });
+  if (precheck && precheck.status !== "PENDING") {
+    return resultFromFinalizedPayment(precheck.id);
   }
 
-  const { booking, payment } = await prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     const booking = await tx.booking.findUnique({ where: { id: params.bookingId }, include: { hold: true } });
     if (!booking || booking.userId !== params.userId) throw new AppError("NOT_FOUND", "Booking not found.");
 
-    if (booking.status === "DRAFT") assertBookingTransition("DRAFT", "PAYMENT_PENDING");
-    else if (booking.status === "PAYMENT_FAILED") assertBookingTransition("PAYMENT_FAILED", "PAYMENT_PENDING");
-    else if (booking.status !== "PAYMENT_PENDING") {
-      throw new AppError("INVALID_BOOKING", `Booking is ${booking.status} and cannot be paid for.`);
+    // Authoritative idempotency check, inside the same transaction that
+    // will create the Payment row: if a payment with this exact key was
+    // created by a concurrent duplicate call that has already reached this
+    // point (possible when SQLite/Postgres serializes the two write
+    // transactions one after another), reuse/recognize it instead of
+    // re-validating the booking's current status against a stale
+    // assumption — the booking may already be CONFIRMED by that duplicate.
+    const existing = await tx.payment.findUnique({ where: { idempotencyKey: params.idempotencyKey } });
+    if (existing && existing.status !== "PENDING") {
+      return { alreadyFinalizedPaymentId: existing.id } as const;
+    }
+
+    if (!existing) {
+      if (booking.status === "DRAFT") assertBookingTransition("DRAFT", "PAYMENT_PENDING");
+      else if (booking.status === "PAYMENT_FAILED") assertBookingTransition("PAYMENT_FAILED", "PAYMENT_PENDING");
+      else if (booking.status !== "PAYMENT_PENDING") {
+        throw new AppError("INVALID_BOOKING", `Booking is ${booking.status} and cannot be paid for.`);
+      }
     }
 
     if (!booking.hold || booking.hold.status !== "ACTIVE" || booking.hold.expiresAt <= new Date()) {
@@ -308,7 +328,7 @@ export async function payForBooking(params: PayForBookingParams): Promise<PayFor
     }
 
     const payment =
-      existingPayment ??
+      existing ??
       (await tx.payment.create({
         data: {
           bookingId: booking.id,
@@ -319,8 +339,13 @@ export async function payForBooking(params: PayForBookingParams): Promise<PayFor
       }));
 
     logger.info("PAYMENT_ATTEMPTED", { bookingId: booking.id, paymentId: payment.id, amountCents: payment.amountCents });
-    return { booking, payment };
+    return { booking, payment } as const;
   }, TX_OPTIONS);
+
+  if ("alreadyFinalizedPaymentId" in outcome) {
+    return resultFromFinalizedPayment(outcome.alreadyFinalizedPaymentId);
+  }
+  const { booking, payment } = outcome;
 
   const chargeResult = await paymentProvider.charge({
     amountCents: payment.amountCents,

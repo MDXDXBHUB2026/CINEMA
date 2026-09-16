@@ -41,6 +41,8 @@ yarn-error.log*
 /prisma/dev.db
 /prisma/dev.db-journal
 /prisma/*.db
+/tests/test.db
+/tests/test.db-journal
 
 # test artifacts
 /playwright-report
