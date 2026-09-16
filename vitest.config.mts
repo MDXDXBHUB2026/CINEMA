@@ -14,8 +14,9 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     testTimeout: 20_000,
     hookTimeout: 30_000,
-    // Integration/concurrency tests share one SQLite file and must not run
-    // concurrently with each other or they'll race on unrelated fixture data.
+    // Test files share one Postgres database (tests/prepare-test-db.ts) and
+    // some suites assert exact row counts, so files must not run concurrently
+    // with each other.
     fileParallelism: false,
   },
   resolve: {

@@ -36,7 +36,7 @@ for how double-booking is prevented under concurrency.
 
 - **Framework**: Next.js 16 (App Router, Server Components, Server Actions, Route Handlers), React 19, TypeScript (strict)
 - **Styling**: Tailwind CSS v4, a small hand-rolled design system (`class-variance-authority`), `recharts` for the admin dashboard
-- **Database**: SQLite locally via Prisma 6 (PostgreSQL-ready — see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md))
+- **Database**: PostgreSQL via Prisma 6 — local dev via `docker-compose.yml`, production on Render's managed Postgres (see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md))
 - **Auth**: bcrypt password hashing + signed JWT session cookies (`jose`)
 - **Validation**: Zod at every mutation boundary
 - **Testing**: Vitest (unit + integration, including a real concurrency test)
@@ -45,30 +45,30 @@ for how double-booking is prevented under concurrency.
 ## Prerequisites
 
 - Node.js 20+ and npm
-- (Optional) Docker, only if you want to run PostgreSQL locally instead of the SQLite default
+- Docker (to run the local PostgreSQL instance via `docker-compose.yml`) — or point `DATABASE_URL` at any Postgres instance you already have
 
 ## Installation
 
 ```bash
+docker compose up -d   # starts local Postgres on localhost:5433
 npm install
-cp .env.example .env
+cp .env.example .env   # DATABASE_URL already points at the container above
 ```
 
 ## Environment configuration
 
 Every variable is documented inline in `.env.example` and validated at
-startup (`src/lib/config.ts`). The defaults work out of the box for local
-development — you only need to change `AUTH_SECRET` if you want a
-non-default value (the example one is clearly marked insecure/dev-only).
+startup (`src/lib/config.ts`) — a missing/invalid value fails fast with a
+clear error. `.env.example` calls out, for each variable, whether it's a
+local-dev value or something you set differently in Render production;
+see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for the full Render setup.
 
 ## Database setup
 
 ```bash
-npm run db:migrate   # applies migrations, creates prisma/dev.db (SQLite)
-npm run db:seed      # realistic seed data (see below)
+npm run db:migrate   # applies the migration baseline against local Postgres
+npm run db:seed      # realistic seed data (destructive — see below)
 ```
-
-To use PostgreSQL instead, see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md#moving-from-sqlite-to-postgresql).
 
 ## Running in development
 
@@ -93,9 +93,13 @@ See [docs/TESTING.md](./docs/TESTING.md) for exactly what's covered
 ## Production build
 
 ```bash
-npm run build
-npm run start
+npm run build   # prisma generate && next build
+npm run start   # next start — binds to $PORT automatically (Render sets this)
 ```
+
+See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for the exact Render Build
+Command / Pre-Deploy Command / Start Command and required environment
+variables.
 
 ## Default development accounts
 

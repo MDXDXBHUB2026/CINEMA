@@ -21,7 +21,11 @@ export async function getAllMovies(search?: string) {
   return prisma.movie.findMany({
     where: {
       status: { in: ["NOW_SHOWING", "COMING_SOON"] },
-      ...(search ? { title: { contains: search } } : {}),
+      // `mode: "insensitive"` is required on PostgreSQL for case-insensitive
+      // matching (Prisma's `contains` is case-sensitive there by default,
+      // unlike SQLite's default LIKE behavior — a real behavioral
+      // difference between the two providers this app has used).
+      ...(search ? { title: { contains: search, mode: "insensitive" as const } } : {}),
     },
     include: { genres: { include: { genre: true } } },
     orderBy: [{ status: "asc" }, { releaseDate: "desc" }],

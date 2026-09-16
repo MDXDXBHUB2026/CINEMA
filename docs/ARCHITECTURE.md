@@ -27,7 +27,7 @@ flowchart TB
         RBAC["RBAC / session\nsrc/lib/auth"]
     end
 
-    DB[(SQLite dev / PostgreSQL prod\nvia Prisma)]
+    DB[(PostgreSQL via Prisma\nlocal: docker-compose, prod: Render)]
 
     UI -->|navigation| Proxy --> Pages
     UI -->|fetch| API
@@ -146,7 +146,7 @@ transitively; see its module comment and the git history for the fix).
 
 | Local (today) | Production migration path |
 |---|---|
-| SQLite (`prisma/schema.prisma` `provider = "sqlite"`) | Switch to `provider = "postgresql"`, point `DATABASE_URL` at a managed Postgres instance, re-run `prisma migrate deploy`. Schema deliberately avoids native `enum`/`Decimal` types so this is a config change, not a schema rewrite (see [DEPLOYMENT.md](./DEPLOYMENT.md)) |
+| Local Postgres (`docker-compose.yml`) | Render's managed Postgres in production — same `provider = "postgresql"` schema, just a different `DATABASE_URL` (see [DEPLOYMENT.md](./DEPLOYMENT.md)). No schema changes needed between the two |
 | `SimulatedPaymentProvider` (`src/lib/payments/`) | Implement `PaymentProvider` (e.g. `StripePaymentProvider`) and swap the export in `src/lib/payments/simulated-provider.ts` — the booking engine never imports the concrete provider |
 | In-process seat-hold expiry (lazy sweep on read/write, see BOOKING_ENGINE.md) | Move to a scheduled worker + Redis/DB-backed lock if running >1 app instance |
 | In-memory rate limiter (`src/lib/rate-limit.ts`) | Redis-backed (e.g. `@upstash/ratelimit`) so limits are shared across instances |

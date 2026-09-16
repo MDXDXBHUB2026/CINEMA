@@ -56,18 +56,21 @@ external lock:
   two concurrent conflicting `UPDATE`s always waits for the other's
   transaction to finish, then re-evaluates the `WHERE` clause against
   committed data, and finds `status` already `'HELD'`.
-- On **SQLite** (this project's local dev database), this guarantee is even
-  stronger by default: SQLite allows only one writer transaction at a time
-  for the whole database file, so writes are trivially serialized. See
-  [SQLite-specific note](#sqlite-specific-note-connection_limit1) below for
-  a real gotcha this caused.
-- On **PostgreSQL** (the intended production database) under its default
-  `READ COMMITTED` isolation, an `UPDATE` takes a row-level lock; a second
+- On **PostgreSQL** (this project's database, both locally via
+  docker-compose and in Render production) under its default `READ
+  COMMITTED` isolation, an `UPDATE` takes a row-level lock; a second
   concurrent `UPDATE` targeting the same row blocks until the first
   transaction commits or rolls back, then re-runs its `WHERE` predicate
   against the now-current row. This is standard, well-understood Postgres
   behavior — no `SERIALIZABLE` isolation or advisory locks needed for this
   specific pattern.
+- This project ran on SQLite for local development early on, before
+  migrating fully to PostgreSQL (see [DEPLOYMENT.md](./DEPLOYMENT.md)).
+  SQLite's single-writer-per-file model happened to serialize transactions
+  even more strictly than Postgres does — which, as the note below and the
+  "Payment idempotency" section describe, once *hid* a real concurrency
+  bug rather than catching it. This is retained as a cautionary note, not
+  current configuration.
 - The whole multi-seat claim happens inside **one** interactive
   `$transaction`: if any single seat in the request fails, throwing rolls
   back every write made so far in that callback, including the `SeatHold`
@@ -75,11 +78,15 @@ external lock:
 
 This is the standard "optimistic conditional update" pattern used by most
 production seat-inventory/ticketing systems, and it composes correctly with
-Prisma's `$transaction` semantics on both engines this project targets.
+Prisma's `$transaction` semantics.
 
-### SQLite-specific note: `connection_limit=1`
+### Historical note (no longer applicable): SQLite's `connection_limit=1`
 
-During development, a real bug surfaced under the automated concurrency
+This project used SQLite for local development before migrating fully to
+PostgreSQL (see [DEPLOYMENT.md](./DEPLOYMENT.md)) — kept here because it's
+directly relevant to why the "Payment idempotency" section below required
+three iterations to get right. During that earlier SQLite phase, a bug
+surfaced under the automated concurrency
 test (12 simultaneous `createSeatHold` calls for one seat): some requests
 failed with a raw `SQLITE_BUSY` / "database is locked" `PrismaClientKnownRequestError`
 instead of the intended `SEAT_UNAVAILABLE`. Root cause: Prisma's default
@@ -148,7 +155,7 @@ instead of silently corrupting state.
 ## Payment idempotency
 
 `payForBooking` accepts an `idempotencyKey`. `Payment.idempotencyKey` is a
-unique DB column, and the finalize step uses the same conditional-update
+unique DB column. Finalizing a payment uses the same conditional-update
 pattern as seat holds:
 
 ```ts
@@ -162,20 +169,80 @@ if (claimed.count === 0) {
 }
 ```
 
-This was **not correct on the first attempt**. A real bug found by the
-automated test suite: two concurrent `payForBooking` calls with the *same*
-`idempotencyKey` raced on an idempotency check that ran *before* the
-transaction that creates the `Payment` row. The second call could observe
-"no Payment yet" (the race window), proceed past the check, and then read a
-`Booking` that the *first* call had, by that point, already moved all the
-way to `CONFIRMED` — throwing `INVALID_BOOKING` instead of returning the
-shared successful outcome. The fix: move the idempotency-key lookup
-*inside* the same transaction that creates the `Payment` row (the actual
-serialization point for this operation), so a concurrent duplicate always
-either sees no `Payment` yet (and proceeds to create/share one) or an
-already-finalized one (and short-circuits) — never a stale in-between read.
-See the git history of `payForBooking` and `tests/integration/booking-engine.test.ts`'s
-"is idempotent under a duplicated request" test for the full story.
+Getting the *creation* half of this right (claiming an `idempotencyKey`
+for the first time) took three iterations, each one caught by the
+automated test suite — worth documenting in full because each fix looked
+correct in isolation and only failed under a specific, real condition:
+
+**Attempt 1 — check-then-create.** The idempotency lookup ran *before* the
+transaction that creates the `Payment` row. Two concurrent calls with the
+same key could both observe "no Payment yet" (the race window), both
+proceed, and the second would read a `Booking` the first had, by then,
+already moved to `CONFIRMED` — throwing `INVALID_BOOKING` instead of
+returning the shared successful outcome.
+
+**Attempt 2 — move the check inside the transaction.** Moving the
+`Payment` lookup *inside* the same transaction that creates the row fixed
+the test suite — because at the time, local tests ran against SQLite with
+`connection_limit=1`, which forces every transaction to run to full
+completion, one at a time, on a single connection. That serialization
+made the two "concurrent" calls effectively sequential, which hid the
+fact that the fix was still a plain `findUnique` + `create` pair, not an
+atomic operation.
+
+**Attempt 3 — the actual fix, found migrating to PostgreSQL.** Running
+the identical test suite against real Postgres concurrency (the intended
+production database, with proper multi-connection concurrent
+transactions) immediately reproduced a raw unique-constraint violation on
+`idempotencyKey` — proof that attempt 2 was never actually race-free, only
+accidentally protected by a SQLite quirk. The fix has two parts:
+
+1. **Claim the idempotency key as its own standalone statement**, not
+   nested inside a larger transaction:
+   ```ts
+   let payment;
+   try {
+     payment = await prisma.payment.create({ data: { ... } });
+   } catch (err) {
+     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+       payment = await prisma.payment.findUniqueOrThrow({ where: { idempotencyKey } });
+     } else {
+       throw err;
+     }
+   }
+   ```
+   A `tx.payment.upsert(...)` was tried in between attempts 2 and 3,
+   expecting Prisma to compile it to a single atomic `INSERT ... ON
+   CONFLICT` — but it still surfaced the same unique-constraint error
+   under real concurrent load, disproving that assumption for this query
+   shape/Prisma version. This matters structurally too: had the `upsert`
+   (or a caught `create`) been nested inside a larger `$transaction`,
+   catching the error and continuing on the same transaction handle
+   *would not have worked* — Postgres aborts an entire transaction after
+   any statement error (no partial rollback without an explicit
+   `SAVEPOINT`), so every subsequent query on that transaction would also
+   fail. Running the claim as an independent, non-transactional statement
+   sidesteps this entirely: a `P2002` there is a normal, isolated,
+   catchable JavaScript error.
+2. **Everything after the claim (validating the hold, transitioning the
+   booking to `PAYMENT_PENDING`) runs in its own separate transaction**,
+   keyed off a fresh read of the booking and using the same
+   conditional-`updateMany` pattern used everywhere else in this file —
+   so a concurrent duplicate call that already performed the transition
+   sees a harmless no-op (0 rows matched) instead of re-validating stale
+   state.
+
+The lesson generalizes beyond this one function: **a local SQLite dev
+database configured to avoid lock errors can accidentally prove a
+concurrency fix "correct" by serializing away the exact race it's
+supposed to handle.** The automated test suite for this booking engine is
+only a real guarantee when it's run against the same database engine and
+concurrency model as production — which is why this fix was verified by
+running the full suite (36 tests, including the seat-hold concurrency
+test) against real PostgreSQL, three times in a row, specifically to rule
+out the kind of intermittent race a single green run can't. See
+`tests/integration/booking-engine.test.ts`'s "is idempotent under a
+duplicated request" test.
 
 Net effect: a retried payment confirmation (network retry, double-click,
 crash-and-resume) can **never** create a second `Payment`, a second

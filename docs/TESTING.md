@@ -11,10 +11,19 @@ report for the exact numbers from the last run.
   uniqueness/format, and RBAC helpers (including an explicit IDOR-guard
   test).
 - **Integration** (`tests/integration/booking-engine.test.ts`): the
-  booking engine against a real (throwaway) SQLite database — seat holds,
+  booking engine against a real PostgreSQL database (`cinebook_test`,
+  provisioned fresh — schema pushed and every table truncated — before
+  each `npm test` run; see `tests/prepare-test-db.ts`) — seat holds,
   expiry/reclaim, idempotent booking creation, payment success/decline/
   retry, payment idempotency under a genuinely concurrent duplicate
-  request, ownership checks, and `cancelBooking` seat release.
+  request, ownership checks, and `cancelBooking` seat release. This suite
+  used to run against SQLite; migrating it to real Postgres surfaced a
+  genuine concurrency bug in the payment idempotency logic that SQLite's
+  forced single-connection serialization had been silently masking — see
+  [BOOKING_ENGINE.md](./BOOKING_ENGINE.md#payment-idempotency) for the
+  full story. The suite was re-run multiple times in a row against
+  Postgres after the fix specifically to rule out flakiness, not just
+  once.
 - **Concurrency (Gate 6)**: 12 simultaneous `createSeatHold` calls for one
   seat → exactly 1 succeeds, 11 get `SEAT_UNAVAILABLE`; a follow-up test
   confirms a `CONFIRMED` seat can't later be claimed by anyone.

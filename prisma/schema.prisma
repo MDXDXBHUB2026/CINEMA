@@ -1,26 +1,26 @@
 // CineBook data model.
 //
-// Local development uses SQLite (see DATABASE_URL in .env) because PostgreSQL
-// is not installed on this machine. The schema intentionally avoids
-// Postgres-only features (native `enum`, `Decimal`) so it can be repointed at
-// PostgreSQL later by changing `provider` + `DATABASE_URL` with no schema
-// rewrite. Status/role "enums" are plain `String` columns validated by the
-// TypeScript union types in `src/lib/enums.ts` and by Zod schemas at the API
-// boundary. Money is stored as integer cents to avoid floating point drift.
+// PostgreSQL is the datasource for both local development (via
+// docker-compose.yml) and Render production (a managed Postgres instance).
+// The schema still deliberately avoids native `enum`/`Decimal` types —
+// status/role "enums" are plain `String` columns validated by the
+// TypeScript union types in `src/lib/enums.ts` and by Zod schemas at the
+// API boundary — not because SQLite is in play anymore, but because it
+// keeps migrations simple (no enum-alteration DDL) and keeps the app-level
+// validation as the single source of truth. Money is stored as integer
+// cents/fils to avoid floating point drift.
 //
 // See docs/ARCHITECTURE.md and docs/BOOKING_ENGINE.md for the rationale
-// behind the seat inventory / hold / booking design.
+// behind the seat inventory / hold / booking design, and
+// docs/DEPLOYMENT.md for local (docker-compose) vs Render (managed
+// Postgres) configuration.
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// NOTE: `provider` must be a literal ("sqlite" | "postgresql"), Prisma does
-// not support selecting it via env(). To move to PostgreSQL: change this to
-// "postgresql", point DATABASE_URL at a Postgres instance, then re-run
-// `npm run db:migrate`. See docs/DEPLOYMENT.md.
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -304,7 +304,7 @@ model AuditEvent {
   action      String
   entityType  String
   entityId    String?
-  metadata    String? // JSON-encoded string (kept portable across sqlite/postgres)
+  metadata    String? // JSON-encoded string (see src/lib/audit.ts)
   createdAt   DateTime @default(now())
 
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)

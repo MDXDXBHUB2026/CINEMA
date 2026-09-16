@@ -1,13 +1,16 @@
-# Optional: a local PostgreSQL instance for developers who want to run
-# against the intended production database instead of the SQLite fallback.
-# Not required — `npm run dev` works out of the box against SQLite.
+# Local PostgreSQL instance, matching the Render production database
+# engine. Prisma's datasource provider is "postgresql" for both local dev
+# and Render production — see .env.example and docs/DEPLOYMENT.md for the
+# split between local (this container) and Render (managed Postgres)
+# configuration.
 #
 # Usage:
 #   docker compose up -d
-#   # then in .env: DATABASE_URL="postgresql://cinebook:cinebook@localhost:5432/cinebook"
-#   # and in prisma/schema.prisma: provider = "postgresql"
-#   npm run db:migrate
+#   npm run db:migrate   # first time: applies the migration baseline
 #   npm run db:seed
+#
+# Host port 5433 (not the Postgres default 5432) to avoid colliding with
+# any other local Postgres container/instance already using 5432.
 services:
   db:
     image: postgres:16-alpine
@@ -17,9 +20,14 @@ services:
       POSTGRES_PASSWORD: cinebook
       POSTGRES_DB: cinebook
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - cinebook_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cinebook"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   cinebook_postgres_data:

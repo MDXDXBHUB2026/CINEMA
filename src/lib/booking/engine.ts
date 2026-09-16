@@ -8,7 +8,7 @@ import { assertBookingTransition } from "@/lib/booking/state-machine";
 import { bookingEngineConfig, pricingConfig } from "@/lib/config";
 import { paymentProvider } from "@/lib/payments/simulated-provider";
 import type { SimulatedOutcome } from "@/lib/payments/provider";
-import type { BookingStatus } from "@/lib/enums";
+import { BOOKING_TRANSITIONS, type BookingStatus } from "@/lib/enums";
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 };
 
@@ -277,6 +277,13 @@ export interface PayForBookingResult {
   ticketCode?: string;
 }
 
+// States a booking may legally be in immediately before PAYMENT_PENDING,
+// derived from the state machine table itself (not hand-duplicated) so
+// this can never silently drift from src/lib/enums.ts.
+const PAYABLE_SOURCE_STATUSES = (Object.keys(BOOKING_TRANSITIONS) as BookingStatus[]).filter((status) =>
+  BOOKING_TRANSITIONS[status].includes("PAYMENT_PENDING"),
+);
+
 /**
  * Charges (simulated) and finalizes a booking. Safe to retry with the same
  * `idempotencyKey`: a repeat call short-circuits to the already-recorded
@@ -285,67 +292,76 @@ export interface PayForBookingResult {
  */
 export async function payForBooking(params: PayForBookingParams): Promise<PayForBookingResult> {
   // Fast path: a fully-finalized payment for this key already exists (a
-  // sequential retry after full completion). Avoids an unnecessary
-  // transaction, but is NOT the correctness guarantee for concurrent
-  // duplicate calls — that guarantee lives inside the transaction below,
-  // because this read can race with another in-flight call for the same
-  // key. See docs/BOOKING_ENGINE.md "Payment idempotency".
+  // sequential retry after full completion).
   const precheck = await prisma.payment.findUnique({ where: { idempotencyKey: params.idempotencyKey } });
   if (precheck && precheck.status !== "PENDING") {
     return resultFromFinalizedPayment(precheck.id);
   }
 
-  const outcome = await prisma.$transaction(async (tx) => {
-    const booking = await tx.booking.findUnique({ where: { id: params.bookingId }, include: { hold: true } });
-    if (!booking || booking.userId !== params.userId) throw new AppError("NOT_FOUND", "Booking not found.");
+  const booking0 = await prisma.booking.findUnique({ where: { id: params.bookingId } });
+  if (!booking0 || booking0.userId !== params.userId) throw new AppError("NOT_FOUND", "Booking not found.");
 
-    // Authoritative idempotency check, inside the same transaction that
-    // will create the Payment row: if a payment with this exact key was
-    // created by a concurrent duplicate call that has already reached this
-    // point (possible when SQLite/Postgres serializes the two write
-    // transactions one after another), reuse/recognize it instead of
-    // re-validating the booking's current status against a stale
-    // assumption — the booking may already be CONFIRMED by that duplicate.
-    const existing = await tx.payment.findUnique({ where: { idempotencyKey: params.idempotencyKey } });
-    if (existing && existing.status !== "PENDING") {
-      return { kind: "already-finalized" as const, paymentId: existing.id };
-    }
+  // Claim the idempotency key with a plain create + catch-on-conflict —
+  // deliberately NOT `upsert`, and deliberately NOT nested inside the
+  // larger transaction below. Two real bugs were found getting this right:
+  // 1. A naive "findUnique, then create if missing" pair races under
+  //    Postgres's default READ COMMITTED isolation: two concurrent calls
+  //    can both observe "no row yet" and both attempt to create one,
+  //    and the loser gets a raw unique-constraint error instead of the
+  //    intended idempotent behavior. (SQLite's local dev
+  //    connection_limit=1 fully serializes transactions and hid this race
+  //    during earlier development.)
+  // 2. `tx.payment.upsert()` was tried next, expecting Prisma to compile it
+  //    to a single atomic `INSERT ... ON CONFLICT` — but under real
+  //    concurrent load it still surfaced the same unique-constraint error,
+  //    disproving that assumption for this query shape/version. Trying to
+  //    catch that error and continue on the SAME `tx` would not have
+  //    worked anyway: Postgres aborts an entire transaction after any
+  //    statement error (no partial rollback without a SAVEPOINT), so every
+  //    later query on that `tx` would fail too.
+  // The fix: run the claim as its own standalone statement (no enclosing
+  // transaction to abort), so a P2002 here is a normal, isolated,
+  // catchable error — the loser simply re-reads the winner's row.
+  let payment: Awaited<ReturnType<typeof prisma.payment.create>>;
+  try {
+    payment = await prisma.payment.create({
+      data: { bookingId: booking0.id, idempotencyKey: params.idempotencyKey, amountCents: booking0.totalCents, status: "PENDING" },
+    });
+  } catch (err) {
+    const isDuplicateKey = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+    if (!isDuplicateKey) throw err;
+    payment = await prisma.payment.findUniqueOrThrow({ where: { idempotencyKey: params.idempotencyKey } });
+  }
 
-    if (!existing) {
-      if (booking.status === "DRAFT") assertBookingTransition("DRAFT", "PAYMENT_PENDING");
-      else if (booking.status === "PAYMENT_FAILED") assertBookingTransition("PAYMENT_FAILED", "PAYMENT_PENDING");
-      else if (booking.status !== "PAYMENT_PENDING") {
-        throw new AppError("INVALID_BOOKING", `Booking is ${booking.status} and cannot be paid for.`);
-      }
-    }
+  if (payment.status !== "PENDING") {
+    return resultFromFinalizedPayment(payment.id);
+  }
 
-    if (!booking.hold || booking.hold.status !== "ACTIVE" || booking.hold.expiresAt <= new Date()) {
+  const booking = await prisma.$transaction(async (tx) => {
+    const current = await tx.booking.findUniqueOrThrow({ where: { id: params.bookingId }, include: { hold: true } });
+
+    if (!current.hold || current.hold.status !== "ACTIVE" || current.hold.expiresAt <= new Date()) {
       throw new AppError("SEAT_HOLD_EXPIRED", "Your seat reservation expired before payment could complete. Please select your seats again.");
     }
 
-    if (booking.status !== "PAYMENT_PENDING") {
-      await tx.booking.update({ where: { id: booking.id }, data: { status: "PAYMENT_PENDING" } });
+    // Conditional update (the same pattern used throughout this file):
+    // only actually transitions the booking if it's currently in an
+    // allowed source state. A concurrent duplicate call for the same
+    // idempotencyKey that already performed this transition makes this a
+    // harmless no-op (0 rows matched) instead of a stale re-validation.
+    await tx.booking.updateMany({
+      where: { id: current.id, status: { in: PAYABLE_SOURCE_STATUSES } },
+      data: { status: "PAYMENT_PENDING" },
+    });
+
+    const updated = await tx.booking.findUniqueOrThrow({ where: { id: current.id } });
+    if (updated.status !== "PAYMENT_PENDING") {
+      throw new AppError("INVALID_BOOKING", `Booking is ${updated.status} and cannot be paid for.`);
     }
-
-    const payment =
-      existing ??
-      (await tx.payment.create({
-        data: {
-          bookingId: booking.id,
-          idempotencyKey: params.idempotencyKey,
-          amountCents: booking.totalCents,
-          status: "PENDING",
-        },
-      }));
-
-    logger.info("PAYMENT_ATTEMPTED", { bookingId: booking.id, paymentId: payment.id, amountCents: payment.amountCents });
-    return { kind: "proceed" as const, booking, payment };
+    return updated;
   }, TX_OPTIONS);
 
-  if (outcome.kind === "already-finalized") {
-    return resultFromFinalizedPayment(outcome.paymentId);
-  }
-  const { booking, payment } = outcome;
+  logger.info("PAYMENT_ATTEMPTED", { bookingId: booking.id, paymentId: payment.id, amountCents: payment.amountCents });
 
   const chargeResult = await paymentProvider.charge({
     amountCents: payment.amountCents,
