@@ -1,0 +1,310 @@
+// CineBook data model.
+//
+// Local development uses SQLite (see DATABASE_URL in .env) because PostgreSQL
+// is not installed on this machine. The schema intentionally avoids
+// Postgres-only features (native `enum`, `Decimal`) so it can be repointed at
+// PostgreSQL later by changing `provider` + `DATABASE_URL` with no schema
+// rewrite. Status/role "enums" are plain `String` columns validated by the
+// TypeScript union types in `src/lib/enums.ts` and by Zod schemas at the API
+// boundary. Money is stored as integer cents to avoid floating point drift.
+//
+// See docs/ARCHITECTURE.md and docs/BOOKING_ENGINE.md for the rationale
+// behind the seat inventory / hold / booking design.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("CUSTOMER") // CUSTOMER | STAFF | CINEMA_MANAGER | ADMIN
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bookings      Booking[]
+  seatHolds     SeatHold[]
+  auditEvents   AuditEvent[]
+  cinemaStaffOf CinemaStaff[]
+  loginAttempts LoginAttempt[]
+
+  @@index([role])
+}
+
+// Scopes a STAFF/CINEMA_MANAGER user to the cinema(s) they may administer.
+// ADMIN bypasses this table entirely.
+model CinemaStaff {
+  id       String @id @default(cuid())
+  userId   String
+  cinemaId String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cinema   Cinema @relation(fields: [cinemaId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cinemaId])
+}
+
+// Coarse-grained brute-force guard for login. Local-process only (see
+// docs/SECURITY.md for the production-grade recommendation, e.g. Redis).
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String
+  succeeded Boolean
+  ip        String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model Genre {
+  id     String       @id @default(cuid())
+  name   String       @unique
+  movies MovieGenre[]
+}
+
+model Movie {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  title           String
+  synopsis        String
+  durationMinutes Int
+  language        String
+  classification  String // e.g. G, PG, PG-13, R
+  releaseDate     DateTime
+  posterUrl       String
+  backdropUrl     String
+  status          String   @default("NOW_SHOWING") // NOW_SHOWING | COMING_SOON | ARCHIVED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  genres    MovieGenre[]
+  showtimes Showtime[]
+
+  @@index([status])
+}
+
+model MovieGenre {
+  movieId String
+  genreId String
+  movie   Movie  @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  genre   Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, genreId])
+}
+
+model Cinema {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  city      String
+  address   String
+  createdAt DateTime @default(now())
+
+  screens Screen[]
+  staff   CinemaStaff[]
+}
+
+model Screen {
+  id         String @id @default(cuid())
+  cinemaId   String
+  name       String
+  screenType String @default("STANDARD") // STANDARD | PREMIUM | IMAX
+
+  cinema    Cinema     @relation(fields: [cinemaId], references: [id], onDelete: Cascade)
+  seats     Seat[]
+  showtimes Showtime[]
+
+  @@unique([cinemaId, name])
+}
+
+model SeatCategory {
+  id              String @id @default(cuid())
+  name            String @unique // STANDARD | PREMIUM | ACCESSIBLE
+  priceMultiplier Float  @default(1.0)
+
+  seats Seat[]
+}
+
+model Seat {
+  id            String  @id @default(cuid())
+  screenId      String
+  row           String // "A", "B", ...
+  column        Int
+  label         String // "A12"
+  categoryId    String
+  isAccessible  Boolean @default(false)
+  isActive      Boolean @default(true)
+
+  screen        Screen         @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  category      SeatCategory   @relation(fields: [categoryId], references: [id])
+  showtimeSeats ShowtimeSeat[]
+
+  @@unique([screenId, row, column])
+}
+
+// ---------------------------------------------------------------------------
+// Scheduling & inventory
+// ---------------------------------------------------------------------------
+
+model Showtime {
+  id             String   @id @default(cuid())
+  movieId        String
+  screenId       String
+  startsAt       DateTime
+  endsAt         DateTime
+  basePriceCents Int
+  status         String   @default("SCHEDULED") // SCHEDULED | CANCELLED
+
+  movie         Movie          @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  screen        Screen         @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  showtimeSeats ShowtimeSeat[]
+  bookings      Booking[]
+  seatHolds     SeatHold[]
+
+  @@index([movieId, startsAt])
+  @@index([screenId, startsAt])
+}
+
+// The authoritative inventory row: one per (showtime, seat). All seat-status
+// mutations happen here via conditional updates inside a transaction — see
+// docs/BOOKING_ENGINE.md for why this prevents double booking under
+// concurrency without external locking.
+model ShowtimeSeat {
+  id            String    @id @default(cuid())
+  showtimeId    String
+  seatId        String
+  status        String    @default("AVAILABLE") // AVAILABLE | HELD | BOOKED
+  holdId        String?
+  holdExpiresAt DateTime?
+
+  showtime     Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
+  seat         Seat          @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  hold         SeatHold?     @relation(fields: [holdId], references: [id], onDelete: SetNull)
+  bookingItem  BookingItem?
+
+  @@unique([showtimeId, seatId])
+  @@index([holdId])
+  @@index([status])
+}
+
+model SeatHold {
+  id        String   @id @default(cuid())
+  showtimeId String
+  userId    String
+  status    String   @default("ACTIVE") // ACTIVE | CONSUMED | EXPIRED | RELEASED
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  showtime Showtime       @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seats    ShowtimeSeat[]
+  booking  Booking?
+
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Booking lifecycle
+// ---------------------------------------------------------------------------
+
+model Booking {
+  id             String   @id @default(cuid())
+  bookingRef     String   @unique
+  userId         String
+  showtimeId     String
+  holdId         String?  @unique
+  status         String   @default("DRAFT") // DRAFT | PAYMENT_PENDING | CONFIRMED | CANCELLED | EXPIRED | PAYMENT_FAILED
+  subtotalCents  Int
+  feesCents      Int
+  taxCents       Int
+  discountCents  Int      @default(0)
+  totalCents     Int
+  currency       String   @default("USD")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  showtime  Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Restrict)
+  hold      SeatHold?     @relation(fields: [holdId], references: [id], onDelete: SetNull)
+  items     BookingItem[]
+  payments  Payment[]
+  ticket    Ticket?
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+model BookingItem {
+  id             String @id @default(cuid())
+  bookingId      String
+  showtimeSeatId String @unique
+  seatLabel      String
+  categoryName   String
+  unitPriceCents Int
+
+  booking      Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  showtimeSeat ShowtimeSeat @relation(fields: [showtimeSeatId], references: [id], onDelete: Restrict)
+}
+
+// A payment attempt. `idempotencyKey` lets a retried confirm-payment request
+// be recognized instead of creating a second charge/booking.
+model Payment {
+  id               String   @id @default(cuid())
+  bookingId        String
+  provider         String   @default("SIMULATED")
+  status           String   @default("PENDING") // PENDING | SUCCEEDED | FAILED | CANCELLED | TIMEOUT
+  amountCents      Int
+  idempotencyKey   String   @unique
+  simulatedOutcome String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
+
+model Ticket {
+  id         String   @id @default(cuid())
+  bookingId  String   @unique
+  ticketCode String   @unique
+  issuedAt   DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Observability
+// ---------------------------------------------------------------------------
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    String? // JSON-encoded string (kept portable across sqlite/postgres)
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
+}
